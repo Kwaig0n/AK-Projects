@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Bot, Home, Search, Play, Pause, Trash2 } from "lucide-react";
+import { Plus, Bot, Home, Search, Play, Pause, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -107,6 +107,11 @@ export default function AgentsPage() {
                         title={agent.is_active ? "Pause" : "Resume"}>
                         {agent.is_active ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 text-green-600" />}
                       </Button>
+                      <Link href={`/agents/${agent.id}`}>
+                        <Button size="sm" variant="ghost" title="Edit">
+                          <Pencil className="h-3 w-3 text-blue-400" />
+                        </Button>
+                      </Link>
                       <Button size="sm" variant="ghost" onClick={() => handleDelete(agent)} title="Delete">
                         <Trash2 className="h-3 w-3 text-red-400" />
                       </Button>

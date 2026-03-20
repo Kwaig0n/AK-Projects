@@ -3,12 +3,15 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Play, Pause, Trash2, Bell, Calendar } from "lucide-react";
+import { ArrowLeft, Play, Pause, Trash2, Bell, Calendar, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
 import { SchedulePicker } from "@/components/SchedulePicker";
+import { SkillsPicker } from "@/components/SkillsPicker";
 import { toCron, fromCron, toHuman } from "@/lib/schedule";
 import type { ScheduleConfig } from "@/lib/schedule";
 import { api } from "@/lib/api";
@@ -24,6 +27,15 @@ export default function AgentDetailPage() {
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [schedule, setSchedule] = useState<ScheduleConfig | null>(null);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [skills, setSkills] = useState<string[]>([]);
+  const [savingSkills, setSavingSkills] = useState(false);
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoForm, setInfoForm] = useState({ name: "", description: "" });
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [editingCriteria, setEditingCriteria] = useState(false);
+  const [criteriaStr, setCriteriaStr] = useState("");
+  const [criteriaError, setCriteriaError] = useState("");
+  const [savingCriteria, setSavingCriteria] = useState(false);
 
   async function load() {
     const [a, r, f] = await Promise.all([
@@ -35,6 +47,9 @@ export default function AgentDetailPage() {
     setRuns(r);
     setFindings(f);
     setSchedule(fromCron(a.cron_expression));
+    setSkills(a.enabled_skills ?? []);
+    setInfoForm({ name: a.name, description: a.description ?? "" });
+    setCriteriaStr(JSON.stringify(a.criteria, null, 2));
   }
 
   useEffect(() => { load(); }, [id]);
@@ -68,6 +83,40 @@ export default function AgentDetailPage() {
     } finally { setSavingSchedule(false); }
   }
 
+  async function handleSaveInfo() {
+    setSavingInfo(true);
+    try {
+      await api.agents.update(Number(id), { name: infoForm.name, description: infoForm.description });
+      setEditingInfo(false);
+      load();
+    } finally { setSavingInfo(false); }
+  }
+
+  async function handleSaveCriteria() {
+    let criteria: Record<string, unknown>;
+    try {
+      criteria = JSON.parse(criteriaStr);
+      setCriteriaError("");
+    } catch {
+      setCriteriaError("Invalid JSON — fix before saving.");
+      return;
+    }
+    setSavingCriteria(true);
+    try {
+      await api.agents.update(Number(id), { criteria });
+      setEditingCriteria(false);
+      load();
+    } finally { setSavingCriteria(false); }
+  }
+
+  async function handleSaveSkills() {
+    setSavingSkills(true);
+    try {
+      await api.agents.update(Number(id), { enabled_skills: skills });
+      load();
+    } finally { setSavingSkills(false); }
+  }
+
   if (!agent || !schedule) return <div className="p-6 text-gray-400">Loading...</div>;
 
   return (
@@ -77,9 +126,33 @@ export default function AgentDetailPage() {
       </Link>
 
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{agent.name}</h1>
-          {agent.description && <p className="text-gray-500 text-sm mt-1">{agent.description}</p>}
+        <div className="flex-1">
+          {editingInfo ? (
+            <div className="space-y-2">
+              <Input value={infoForm.name} onChange={(e) => setInfoForm((f) => ({ ...f, name: e.target.value }))}
+                className="text-xl font-bold" placeholder="Agent name" />
+              <Input value={infoForm.description} onChange={(e) => setInfoForm((f) => ({ ...f, description: e.target.value }))}
+                className="text-sm" placeholder="Description (optional)" />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveInfo} disabled={savingInfo}>
+                  <Check className="h-3 w-3 mr-1" />{savingInfo ? "Saving..." : "Save"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => { setEditingInfo(false); setInfoForm({ name: agent.name, description: agent.description ?? "" }); }}>
+                  <X className="h-3 w-3 mr-1" />Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-2">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">{agent.name}</h1>
+                {agent.description && <p className="text-gray-500 text-sm mt-1">{agent.description}</p>}
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setEditingInfo(true)} className="mt-1">
+                <Pencil className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
         <div className="flex gap-2 shrink-0">
           <Button size="sm" onClick={handleRun} disabled={running}>
@@ -153,11 +226,39 @@ export default function AgentDetailPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Search Criteria</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Skills</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <SkillsPicker value={skills} onChange={setSkills} agentType={agent.agent_type} />
+          <Button size="sm" onClick={handleSaveSkills} disabled={savingSkills}>
+            {savingSkills ? "Saving..." : "Save Skills"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm">Search Criteria</CardTitle>
+            <Button size="sm" variant="ghost" onClick={() => { setEditingCriteria(!editingCriteria); setCriteriaError(""); }}>
+              {editingCriteria ? "Cancel" : "Edit"}
+            </Button>
+          </div>
+        </CardHeader>
         <CardContent>
-          <pre className="text-xs bg-gray-950 text-gray-200 rounded-lg p-4 overflow-auto max-h-64">
-            {JSON.stringify(agent.criteria, null, 2)}
-          </pre>
+          {editingCriteria ? (
+            <div className="space-y-2">
+              <Textarea value={criteriaStr} onChange={(e) => setCriteriaStr(e.target.value)}
+                className="font-mono text-xs h-64" />
+              {criteriaError && <p className="text-red-500 text-xs">{criteriaError}</p>}
+              <Button size="sm" onClick={handleSaveCriteria} disabled={savingCriteria}>
+                {savingCriteria ? "Saving..." : "Save Criteria"}
+              </Button>
+            </div>
+          ) : (
+            <pre className="text-xs bg-gray-950 text-gray-200 rounded-lg p-4 overflow-auto max-h-64">
+              {JSON.stringify(agent.criteria, null, 2)}
+            </pre>
+          )}
         </CardContent>
       </Card>
 

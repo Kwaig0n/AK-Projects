@@ -14,6 +14,7 @@ class AgentCreate(BaseModel):
     notify_telegram: bool = True
     telegram_chat_id: str | None = None
     criteria: dict[str, Any] = {}
+    enabled_skills: list[str] = []
 
 
 class AgentUpdate(BaseModel):
@@ -24,6 +25,7 @@ class AgentUpdate(BaseModel):
     notify_telegram: bool | None = None
     telegram_chat_id: str | None = None
     criteria: dict[str, Any] | None = None
+    enabled_skills: list[str] | None = None
 
 
 class AgentResponse(BaseModel):
@@ -36,10 +38,12 @@ class AgentResponse(BaseModel):
     notify_telegram: bool
     telegram_chat_id: str | None
     criteria: dict[str, Any]
+    enabled_skills: list[str] = []
     created_at: datetime
     updated_at: datetime
     last_run_status: str | None = None
     last_run_at: datetime | None = None
+    last_run_id: str | None = None
     next_run_at: datetime | None = None
     findings_last_24h: int = 0
 
@@ -50,7 +54,27 @@ class AgentResponse(BaseModel):
             return json.loads(v)
         return v
 
+    @field_validator("enabled_skills", mode="before")
+    @classmethod
+    def parse_skills(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except Exception:
+                return []
+        return v or []
+
     model_config = {"from_attributes": True}
+
+
+# ── Skill Schema ──────────────────────────────────────────────────────────────
+
+class SkillResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    icon: str
+    compatible_types: list[str]
 
 
 # ── Run Schemas ──────────────────────────────────────────────────────────────

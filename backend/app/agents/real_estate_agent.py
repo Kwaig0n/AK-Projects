@@ -15,6 +15,7 @@ class RealEstateAgent(BaseAgent):
             GET_RENTAL_ESTIMATE_TOOL_DEF,
             SCRAPE_PAGE_TOOL_DEF,
             SEARCH_WEB_TOOL_DEF,
+            *self._get_skill_tools(),
             REPORT_FINDING_TOOL_DEF,
         ]
 
@@ -25,7 +26,8 @@ class RealEstateAgent(BaseAgent):
 
 **Step 1 — Find listings**
 - Use search_real_estate for each configured source and location
-- For listings with limited info, use scrape_page to get full details
+- DO NOT use scrape_page on domain.com.au or realestate.com.au URLs — they block scrapers. The listing data returned by search_real_estate is sufficient.
+- You may use scrape_page on other URLs (e.g. news articles, suburb stats pages)
 - Evaluate against ALL criteria: price range, bedrooms, property type, keywords
 
 **Step 2 — Rental yield analysis (for each qualifying listing)**
@@ -67,7 +69,7 @@ class RealEstateAgent(BaseAgent):
 - below_average: 0.8–0.95
 - weak: < 0.8
 
-Be thorough. Every qualifying listing should have yield analysis before being reported."""
+Be efficient — do not keep searching once you have enough qualifying results. As soon as you've found and reported the requested number of listings, stop immediately and do not make further tool calls."""
 
     def get_initial_message(self) -> str:
         c = self.criteria
@@ -80,7 +82,7 @@ Be thorough. Every qualifying listing should have yield analysis before being re
         keywords_include = c.get("keywords_include", [])
         keywords_exclude = c.get("keywords_exclude", [])
         sources = c.get("sources", ["domain.com.au", "realestate.com.au"])
-        max_results = c.get("max_results", 20)
+        max_results = c.get("max_results", 5)
         min_rental_yield = c.get("min_rental_yield")
         min_yield_index = c.get("min_yield_index")
 

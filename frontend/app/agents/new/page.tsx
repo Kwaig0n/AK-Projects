@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SchedulePicker } from "@/components/SchedulePicker";
+import { SkillsPicker } from "@/components/SkillsPicker";
 import { toCron, fromCron, DEFAULT_SCHEDULE } from "@/lib/schedule";
 import type { ScheduleConfig } from "@/lib/schedule";
 import { api } from "@/lib/api";
@@ -49,6 +50,7 @@ export default function NewAgentPage() {
   const [schedule, setSchedule] = useState<ScheduleConfig>({ ...DEFAULT_SCHEDULE, type: "manual" });
   const [criteriaStr, setCriteriaStr] = useState(JSON.stringify(DEFAULT_RE_CRITERIA, null, 2));
   const [criteriaError, setCriteriaError] = useState("");
+  const [enabledSkills, setEnabledSkills] = useState<string[]>([]);
 
   function handleTypeChange(t: AgentType) {
     setForm((f) => ({ ...f, agent_type: t }));
@@ -56,6 +58,7 @@ export default function NewAgentPage() {
       t === "real_estate" ? DEFAULT_RE_CRITERIA : DEFAULT_RESEARCH_CRITERIA, null, 2
     ));
     setCriteriaError("");
+    setEnabledSkills([]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -77,6 +80,7 @@ export default function NewAgentPage() {
         cron_expression: toCron(schedule),
         notify_telegram: form.notify_telegram,
         criteria,
+        enabled_skills: enabledSkills,
       });
       router.push(`/agents/${agent.id}`);
     } catch (err) {
@@ -136,6 +140,20 @@ export default function NewAgentPage() {
                 onChange={(e) => setForm((f) => ({ ...f, notify_telegram: e.target.checked }))} />
               <Label htmlFor="tg">Send Telegram notifications when findings are ready</Label>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle className="text-base">Skills</CardTitle></CardHeader>
+          <CardContent>
+            <p className="text-xs text-gray-500 mb-3">
+              Optional extra capabilities Claude can use during this agent&apos;s runs.
+            </p>
+            <SkillsPicker
+              value={enabledSkills}
+              onChange={setEnabledSkills}
+              agentType={form.agent_type}
+            />
           </CardContent>
         </Card>
 

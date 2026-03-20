@@ -19,6 +19,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Live asyncio Tasks keyed by run_id — cancelled directly on stop request
+_RUNNING_TASKS: dict[str, "asyncio.Task[None]"] = {}
+
+# Kept for between-iteration checks in base_agent
+_STOP_REQUESTS: set[str] = set()
+
+
+def request_stop(run_id: str) -> None:
+    """Immediately cancel the running agent task."""
+    _STOP_REQUESTS.add(run_id)
+    task = _RUNNING_TASKS.get(run_id)
+    if task and not task.done():
+        task.cancel()
+
+
+def is_stop_requested(run_id: str) -> bool:
+    return run_id in _STOP_REQUESTS
+
+
+def clear_stop(run_id: str) -> None:
+    _STOP_REQUESTS.discard(run_id)
+
 
 def _make_log_fn(run_id: str, log_store: list[dict]):
     """Create a log function that writes to SSE bus and local list."""
@@ -36,7 +58,8 @@ def _make_log_fn(run_id: str, log_store: list[dict]):
 async def trigger_run(agent_id: int, triggered_by: str = "dashboard") -> str:
     """Start an agent run asynchronously. Returns run_id."""
     run_id = str(uuid.uuid4())
-    asyncio.create_task(_run_agent(agent_id, run_id, triggered_by))
+    task = asyncio.create_task(_run_agent(agent_id, run_id, triggered_by))
+    _RUNNING_TASKS[run_id] = task
     return run_id
 
 
@@ -44,11 +67,14 @@ async def _run_agent(agent_id: int, run_id: str, triggered_by: str) -> None:
     """Full agent execution lifecycle."""
     log_store: list[dict] = []
     log = _make_log_fn(run_id, log_store)
+    start_time = datetime.utcnow()
+    agent_instance = None
 
     async with AsyncSessionLocal() as db:
         agent = await db.get(AgentConfig, agent_id)
         if not agent:
             logger.error(f"Agent {agent_id} not found")
+            _RUNNING_TASKS.pop(run_id, None)
             return
 
         # Create run record
@@ -57,40 +83,56 @@ async def _run_agent(agent_id: int, run_id: str, triggered_by: str) -> None:
             run_id=run_id,
             status="running",
             triggered_by=triggered_by,
-            started_at=datetime.utcnow(),
+            started_at=start_time,
         )
         db.add(run)
         await db.commit()
         await db.refresh(run)
         run_db_id = run.id
 
-        start_time = datetime.utcnow()
         findings_data: list[FindingData] = []
 
         try:
             criteria = json.loads(agent.criteria) if isinstance(agent.criteria, str) else agent.criteria
-            agent_instance = _create_agent(agent.agent_type, agent_id, run_id, criteria, log)
+            enabled_skills = json.loads(agent.enabled_skills) if isinstance(agent.enabled_skills, str) else (agent.enabled_skills or [])
+            agent_instance = _create_agent(agent.agent_type, agent_id, run_id, criteria, log, enabled_skills)
             findings_data = await agent_instance.execute()
-            tokens_used = agent_instance.tokens_used
+
+        except asyncio.CancelledError:
+            # Task was cancelled via request_stop() — mark as stopped and persist findings so far
+            clear_stop(run_id)
+            log("warning", "Run stopped by user")
+            sse_service.emit_log(run_id, "done", "Run stopped by user")
+
+            duration = (datetime.utcnow() - start_time).total_seconds()
+            run.status = "stopped"
+            run.completed_at = datetime.utcnow()
+            run.duration_seconds = duration
+            run.findings_count = len(agent_instance.findings) if agent_instance else 0
+            run.tokens_used = agent_instance.tokens_used if agent_instance else 0
+            run.log_entries = json.dumps(log_store)
+            await db.commit()
+            sse_service.cleanup_run(run_id)
+            _RUNNING_TASKS.pop(run_id, None)
+            return
 
         except Exception as e:
             logger.exception(f"Agent run {run_id} failed: {e}")
             log("error", f"Agent failed: {e}")
             sse_service.emit_log(run_id, "done", "Run failed")
 
-            # Update run as failed
             run.status = "failed"
             run.error_message = str(e)
             run.completed_at = datetime.utcnow()
             run.duration_seconds = (datetime.utcnow() - start_time).total_seconds()
             run.log_entries = json.dumps(log_store)
             await db.commit()
+            _RUNNING_TASKS.pop(run_id, None)
             return
 
         # Save findings
         saved_findings = []
         for fd in findings_data:
-            # Check for duplicate URL
             is_new = True
             if fd.url:
                 existing = await db.scalar(
@@ -120,7 +162,6 @@ async def _run_agent(agent_id: int, run_id: str, triggered_by: str) -> None:
         duration = (datetime.utcnow() - start_time).total_seconds()
         sse_service.emit_log(run_id, "done", f"Completed in {duration:.1f}s")
 
-        # Update run record
         run.status = "completed"
         run.completed_at = datetime.utcnow()
         run.duration_seconds = duration
@@ -129,32 +170,30 @@ async def _run_agent(agent_id: int, run_id: str, triggered_by: str) -> None:
         run.log_entries = json.dumps(log_store)
         await db.commit()
 
-        # Refresh findings for notification
         for f in saved_findings:
             await db.refresh(f)
 
-        # Send Telegram notification
         new_findings = [f for f in saved_findings if f.is_new]
         if new_findings and agent.notify_telegram:
             await notification_service.notify_run_complete(agent, run, new_findings)
 
-        # Mark as notified
         for f in new_findings:
             f.notified = True
         await db.commit()
 
         sse_service.cleanup_run(run_id)
+        _RUNNING_TASKS.pop(run_id, None)
 
 
-def _create_agent(agent_type: str, agent_id: int, run_id: str, criteria: dict, log_fn):
+def _create_agent(agent_type: str, agent_id: int, run_id: str, criteria: dict, log_fn, enabled_skills: list[str] | None = None):
     """Instantiate the correct agent class."""
     from app.agents.real_estate_agent import RealEstateAgent
     from app.agents.research_agent import ResearchAgent
 
     if agent_type == "real_estate":
-        return RealEstateAgent(agent_id, run_id, criteria, log_fn)
+        return RealEstateAgent(agent_id, run_id, criteria, log_fn, enabled_skills)
     elif agent_type == "research":
-        return ResearchAgent(agent_id, run_id, criteria, log_fn)
+        return ResearchAgent(agent_id, run_id, criteria, log_fn, enabled_skills)
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
 
@@ -203,10 +242,12 @@ async def get_agents_with_stats(db: AsyncSession) -> list[dict]:
             "notify_telegram": agent.notify_telegram,
             "telegram_chat_id": agent.telegram_chat_id,
             "criteria": json.loads(agent.criteria) if isinstance(agent.criteria, str) else agent.criteria,
+            "enabled_skills": json.loads(agent.enabled_skills) if isinstance(agent.enabled_skills, str) else (agent.enabled_skills or []),
             "created_at": agent.created_at,
             "updated_at": agent.updated_at,
             "last_run_status": last_run.status if last_run else None,
             "last_run_at": last_run.started_at if last_run else None,
+            "last_run_id": last_run.run_id if last_run else None,
             "next_run_at": next_run_at,
             "findings_last_24h": findings_24h or 0,
         }

@@ -12,6 +12,7 @@ class ResearchAgent(BaseAgent):
         return [
             SEARCH_WEB_TOOL_DEF,
             SCRAPE_PAGE_TOOL_DEF,
+            *self._get_skill_tools(),
             REPORT_FINDING_TOOL_DEF,
         ]
 
@@ -32,13 +33,13 @@ When reporting findings:
 - relevance_score: 1.0 = directly answers the query, 0.7 = tangentially related
 - metadata: include source_domain, published_date if available, key_facts as a list
 
-Be thorough and report multiple distinct findings rather than one big summary."""
+Be concise and efficient. Report multiple distinct findings, but stop as soon as you've covered the topic or reached the max sources limit — do not keep searching once you have enough."""
 
     def get_initial_message(self) -> str:
         c = self.criteria
         query = c.get("query", "")
         search_depth = c.get("search_depth", "standard")
-        max_sources = c.get("max_sources", 10)
+        max_sources = c.get("max_sources", 5)
         output_format = c.get("output_format", "summary")
         domains_include = c.get("domains_include", [])
         domains_exclude = c.get("domains_exclude", [])

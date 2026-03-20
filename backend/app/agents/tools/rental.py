@@ -9,20 +9,9 @@ Searches rental listings for similar properties in the same suburb to estimate:
 import asyncio
 import logging
 import re
-import httpx
-from bs4 import BeautifulSoup
 from app.config import settings
 
 logger = logging.getLogger(__name__)
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/122.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "en-AU,en;q=0.9",
-}
 
 
 async def get_rental_estimate(
@@ -111,10 +100,6 @@ async def _search_rentals_tavily(location: str, bedrooms: int | None, property_t
         rents = _extract_weekly_rents(snippet)
         weekly_rents.extend(rents)
 
-    # Also try direct Domain rental scrape
-    domain_rents = await _scrape_domain_rentals(location, bedrooms, property_type)
-    weekly_rents.extend(domain_rents)
-
     # Filter outliers (remove top/bottom 10% if enough data)
     weekly_rents = [r for r in weekly_rents if 100 <= r <= 10000]
     if len(weekly_rents) >= 6:
@@ -124,31 +109,6 @@ async def _search_rentals_tavily(location: str, bedrooms: int | None, property_t
 
     return {"weekly_rents": weekly_rents}
 
-
-async def _scrape_domain_rentals(location: str, bedrooms: int | None, property_type: str) -> list[int]:
-    """Scrape Domain.com.au rental search results for weekly prices."""
-    location_slug = location.lower().replace(" ", "-").replace(",", "")
-    url = f"https://www.domain.com.au/rent/{location_slug}/"
-    params = {}
-    if bedrooms:
-        params["bedrooms"] = f"{bedrooms}-any"
-
-    try:
-        async with httpx.AsyncClient(headers=HEADERS, timeout=20, follow_redirects=True) as client:
-            resp = await client.get(url, params=params)
-            if resp.status_code != 200:
-                return []
-
-        soup = BeautifulSoup(resp.text, "lxml")
-        prices = []
-        for el in soup.select("[data-testid='listing-card-price'], .price, [class*='price']"):
-            text = el.get_text(strip=True)
-            rents = _extract_weekly_rents(text)
-            prices.extend(rents)
-        return prices[:30]
-    except Exception as e:
-        logger.debug(f"Domain rental scrape failed: {e}")
-        return []
 
 
 async def _search_sales_tavily(location: str, bedrooms: int | None, property_type: str) -> dict:

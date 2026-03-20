@@ -3,8 +3,15 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft } from "lucide-react";
+
+function utc(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const normalized = s.endsWith("Z") || s.includes("+") ? s : s + "Z";
+  return new Date(normalized);
+}
+import { ArrowLeft, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RunLogViewer } from "@/components/RunLogViewer";
 import { FindingsTable } from "@/components/FindingsTable";
@@ -15,6 +22,14 @@ export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>();
   const [run, setRun] = useState<Run | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [stopping, setStopping] = useState(false);
+
+  async function handleStop() {
+    setStopping(true);
+    try { await api.runs.stop(runId); }
+    catch (e) { console.error(e); }
+    finally { setStopping(false); }
+  }
 
   useEffect(() => {
     api.runs.get(runId).then(setRun);
@@ -22,7 +37,7 @@ export default function RunDetailPage() {
     const interval = setInterval(async () => {
       const r = await api.runs.get(runId);
       setRun(r);
-      if (r.status === "completed" || r.status === "failed") {
+      if (r.status === "completed" || r.status === "failed" || r.status === "stopped") {
         clearInterval(interval);
         const f = await api.findings.list({ agent_id: r.agent_id, limit: 50 });
         setFindings(f.filter((fi) => fi.run_id === r.id));
@@ -33,7 +48,7 @@ export default function RunDetailPage() {
 
   if (!run) return <div className="p-6 text-gray-400">Loading...</div>;
 
-  const isComplete = run.status === "completed" || run.status === "failed";
+  const isComplete = run.status === "completed" || run.status === "failed" || run.status === "stopped";
 
   return (
     <div className="p-6 space-y-4 max-w-3xl">
@@ -44,12 +59,19 @@ export default function RunDetailPage() {
       <div className="flex items-center gap-3">
         <h1 className="text-xl font-bold text-gray-900">{run.agent_name}</h1>
         <StatusBadge status={run.status} />
+        {run.status === "running" && (
+          <Button size="sm" variant="outline" onClick={handleStop} disabled={stopping}
+            className="text-red-600 border-red-200 hover:bg-red-50">
+            <Square className="h-3 w-3 mr-1 fill-red-500" />
+            {stopping ? "Stopping..." : "Stop Run"}
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-4 gap-3 text-sm">
         {[
           { label: "Triggered by", value: run.triggered_by },
-          { label: "Started", value: run.started_at ? formatDistanceToNow(new Date(run.started_at), { addSuffix: true }) : "—" },
+          { label: "Started", value: run.started_at ? formatDistanceToNow(utc(run.started_at)!, { addSuffix: true }) : "—" },
           { label: "Duration", value: run.duration_seconds ? `${run.duration_seconds.toFixed(1)}s` : run.status === "running" ? "Running..." : "—" },
           { label: "Findings", value: String(run.findings_count) },
         ].map(({ label, value }) => (

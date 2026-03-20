@@ -1,8 +1,15 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Bot, Play, Search, TrendingUp, Plus, RefreshCw } from "lucide-react";
+import { Bot, Play, Search, TrendingUp, Plus, RefreshCw, X, CheckCircle } from "lucide-react";
+
+// Backend sends UTC datetimes without 'Z'
+function utc(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const normalized = s.endsWith("Z") || s.includes("+") ? s : s + "Z";
+  return new Date(normalized);
+}
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +18,25 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { api } from "@/lib/api";
 import type { Agent, Run } from "@/lib/types";
 
+interface CompletionToast {
+  id: string;
+  agentName: string;
+  runId: string;
+  findingsCount: number;
+  status: "completed" | "stopped" | "failed";
+}
+
 export default function DashboardPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [toasts, setToasts] = useState<CompletionToast[]>([]);
+  const prevAgentsRef = useRef<Record<number, string>>({});
+
+  function dismissToast(id: string) {
+    setToasts((t) => t.filter((x) => x.id !== id));
+  }
 
   async function load() {
     setLoading(true);
@@ -25,6 +46,35 @@ export default function DashboardPage() {
         api.runs.list(undefined, 10),
         api.findings.unreadCount(),
       ]);
+
+      // Detect runs that just finished since last poll
+      const prev = prevAgentsRef.current;
+      const newToasts: CompletionToast[] = [];
+      for (const agent of a) {
+        const wasRunning = prev[agent.id] === "running";
+        const isDone =
+          agent.last_run_status === "completed" ||
+          agent.last_run_status === "stopped" ||
+          agent.last_run_status === "failed";
+        if (wasRunning && isDone && agent.last_run_id) {
+          newToasts.push({
+            id: agent.last_run_id,
+            agentName: agent.name,
+            runId: agent.last_run_id,
+            findingsCount: agent.findings_last_24h,
+            status: agent.last_run_status as "completed" | "stopped" | "failed",
+          });
+        }
+        prev[agent.id] = agent.last_run_status ?? "";
+      }
+      if (newToasts.length) {
+        setToasts((t) => [...t, ...newToasts]);
+        // Auto-dismiss after 12s
+        newToasts.forEach((toast) => {
+          setTimeout(() => dismissToast(toast.id), 12000);
+        });
+      }
+
       setAgents(a);
       setRuns(r);
       setUnread(u.count);
@@ -37,16 +87,61 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
+  // Auto-refresh every 5s while any agent is running
+  useEffect(() => {
+    const anyRunning = agents.some((a) => a.last_run_status === "running");
+    if (!anyRunning) return;
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [agents]);
+
   const activeAgents = agents.filter((a) => a.is_active).length;
   const runsToday = runs.filter((r) => {
     if (!r.started_at) return false;
-    const d = new Date(r.started_at);
+    const d = utc(r.started_at);
+    if (!d) return false;
     const now = new Date();
     return d.toDateString() === now.toDateString();
   }).length;
 
   return (
     <div className="p-6 space-y-6">
+      {/* Completion toasts */}
+      {toasts.length > 0 && (
+        <div className="space-y-2">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-sm shadow-sm
+                ${toast.status === "completed"
+                  ? "bg-green-50 border-green-200 text-green-800"
+                  : toast.status === "stopped"
+                  ? "bg-orange-50 border-orange-200 text-orange-800"
+                  : "bg-red-50 border-red-200 text-red-800"}`}
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                <span>
+                  <strong>{toast.agentName}</strong> run {toast.status} —{" "}
+                  <strong>{toast.findingsCount} finding{toast.findingsCount !== 1 ? "s" : ""}</strong> in the last 24h
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href={`/runs/${toast.runId}`}>
+                  <Button size="sm" variant="outline"
+                    className={`text-xs h-7 ${toast.status === "completed" ? "border-green-300 hover:bg-green-100" : "border-orange-300 hover:bg-orange-100"}`}>
+                    View Results
+                  </Button>
+                </Link>
+                <button onClick={() => dismissToast(toast.id)} className="opacity-60 hover:opacity-100">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
@@ -108,7 +203,7 @@ export default function DashboardPage() {
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {agents.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
+                <AgentCard key={agent.id} agent={agent} onStopped={load} />
               ))}
             </div>
           )}
@@ -135,7 +230,7 @@ export default function DashboardPage() {
                       <div className="text-xs text-gray-400 mt-1 flex gap-2">
                         <span>{run.findings_count} findings</span>
                         {run.started_at && (
-                          <span>· {formatDistanceToNow(new Date(run.started_at), { addSuffix: true })}</span>
+                          <span>· {formatDistanceToNow(utc(run.started_at)!, { addSuffix: true })}</span>
                         )}
                       </div>
                     </CardContent>

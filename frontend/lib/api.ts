@@ -1,4 +1,4 @@
-import type { Agent, AgentCreate, AgentUpdate, Run, Finding } from "./types";
+import type { Agent, AgentCreate, AgentUpdate, Run, Finding, Skill } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
@@ -40,6 +40,7 @@ export const api = {
       return request<Run[]>(`/runs?${params}`);
     },
     get: (runId: string) => request<Run>(`/runs/${runId}`),
+    stop: (runId: string) => request<{ message: string }>(`/runs/${runId}/stop`, { method: "POST" }),
     streamUrl: (runId: string) => `${BASE}/runs/${runId}/stream`,
   },
 
@@ -68,6 +69,10 @@ export const api = {
       const q = agentId ? `?agent_id=${agentId}` : "";
       return request<{ count: number }>(`/findings/mark-all-read${q}`, { method: "POST" });
     },
+  },
+
+  skills: {
+    list: () => request<Skill[]>("/agents/skills"),
   },
 
   health: () => request<{ status: string; environment: string; scheduled_jobs: number }>("/health"),

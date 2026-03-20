@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.database import create_tables
+from app.database import create_tables, migrate_db
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,8 +20,9 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────
     logger.info("Starting up...")
 
-    # Create DB tables
+    # Create DB tables + run migrations
     await create_tables()
+    await migrate_db()
     logger.info("Database tables ready")
 
     # Start scheduler

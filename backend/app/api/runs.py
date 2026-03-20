@@ -72,6 +72,19 @@ async def stream_run_logs(run_id: str):
     )
 
 
+@router.post("/{run_id}/stop", status_code=200)
+async def stop_run(run_id: str, db: AsyncSession = Depends(get_db)):
+    """Request a running agent to stop after its current iteration."""
+    from app.services.agent_service import request_stop
+    run = (await db.execute(select(AgentRun).where(AgentRun.run_id == run_id))).scalar_one_or_none()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status != "running":
+        raise HTTPException(status_code=400, detail=f"Run is not running (status: {run.status})")
+    request_stop(run_id)
+    return {"message": "Stop requested"}
+
+
 @router.delete("/{run_id}", status_code=204)
 async def delete_run(run_id: str, db: AsyncSession = Depends(get_db)):
     run = (await db.execute(select(AgentRun).where(AgentRun.run_id == run_id))).scalar_one_or_none()

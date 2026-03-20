@@ -1,7 +1,15 @@
 export type AgentType = "real_estate" | "research";
-export type RunStatus = "pending" | "running" | "completed" | "failed";
+export type RunStatus = "pending" | "running" | "completed" | "failed" | "stopped";
 export type FindingType = "listing" | "price_change" | "research_result" | "alert";
 export type LogLevel = "info" | "tool_call" | "tool_result" | "warning" | "error" | "done";
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  compatible_types: AgentType[];
+}
 
 export interface Agent {
   id: number;
@@ -13,10 +21,12 @@ export interface Agent {
   notify_telegram: boolean;
   telegram_chat_id: string | null;
   criteria: Record<string, unknown>;
+  enabled_skills: string[];
   created_at: string;
   updated_at: string;
   last_run_status: RunStatus | null;
   last_run_at: string | null;
+  last_run_id: string | null;
   next_run_at: string | null;
   findings_last_24h: number;
 }
@@ -29,6 +39,7 @@ export interface AgentCreate {
   notify_telegram?: boolean;
   telegram_chat_id?: string | null;
   criteria: Record<string, unknown>;
+  enabled_skills?: string[];
 }
 
 export interface AgentUpdate {
@@ -39,6 +50,7 @@ export interface AgentUpdate {
   notify_telegram?: boolean;
   telegram_chat_id?: string | null;
   criteria?: Record<string, unknown>;
+  enabled_skills?: string[];
 }
 
 export interface LogEntry {

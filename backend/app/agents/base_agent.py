@@ -87,11 +87,13 @@ class BaseAgent:
         run_id: str,
         criteria: dict[str, Any],
         log_fn: Callable[[str, str], None],
+        enabled_skills: list[str] | None = None,
     ):
         self.agent_id = agent_id
         self.run_id = run_id
         self.criteria = criteria
         self.log = log_fn  # (level, message)
+        self.enabled_skills = enabled_skills or []
         self.client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
         self.messages: list[dict] = []
         self.findings: list[FindingData] = []
@@ -103,27 +105,66 @@ class BaseAgent:
     def get_initial_message(self) -> str:
         raise NotImplementedError
 
+    def _get_skill_tools(self) -> list[dict]:
+        """Return tool definitions for this agent's enabled skills."""
+        from app.agents.skills_registry import SKILL_TOOL_DEFS
+        return [SKILL_TOOL_DEFS[s] for s in self.enabled_skills if s in SKILL_TOOL_DEFS]
+
     def get_tools(self) -> list[dict]:
         """Return tool definitions for this agent. Subclasses can restrict."""
-        return ALL_TOOLS
+        return ALL_TOOLS + self._get_skill_tools()
+
+    # Keep only this many message pairs in history to limit token growth
+    MAX_HISTORY_PAIRS = 4
+
+    def _trim_messages(self) -> list[dict]:
+        """Return a trimmed message list: always keep the first user message, then the last N pairs."""
+        if len(self.messages) <= 1 + self.MAX_HISTORY_PAIRS * 2:
+            return self.messages
+        first = self.messages[:1]
+        recent = self.messages[-(self.MAX_HISTORY_PAIRS * 2):]
+        return first + recent
+
+    async def _call_claude_with_retry(self) -> any:
+        """Call Claude API with exponential backoff on rate limit errors."""
+        max_retries = 4
+        delay = 15  # seconds before first retry
+        for attempt in range(max_retries):
+            try:
+                return await asyncio.to_thread(
+                    self.client.messages.create,
+                    model="claude-sonnet-4-6",
+                    max_tokens=4096,
+                    system=self.get_system_prompt(),
+                    tools=self.get_tools(),
+                    messages=self._trim_messages(),
+                )
+            except anthropic.RateLimitError as e:
+                if attempt == max_retries - 1:
+                    raise
+                wait = delay * (2 ** attempt)
+                self.log("warning", f"Rate limited — waiting {wait}s before retry ({attempt + 1}/{max_retries - 1})")
+                await asyncio.sleep(wait)
+            except anthropic.APIError:
+                raise
 
     async def execute(self) -> list[FindingData]:
         """Run the agentic loop until completion or iteration limit."""
-        self.log("info", f"Agent starting (type={self.AGENT_TYPE})")
+        skill_names = ", ".join(self.enabled_skills) if self.enabled_skills else "none"
+        self.log("info", f"Agent starting (type={self.AGENT_TYPE}, skills={skill_names})")
         self.messages = [{"role": "user", "content": self.get_initial_message()}]
 
         for iteration in range(settings.max_agent_iterations):
+            # Check for stop request before each iteration
+            from app.services.agent_service import is_stop_requested
+            if is_stop_requested(self.run_id):
+                self.log("warning", "Stop requested — ending run early")
+                break
+
             self.log("info", f"Iteration {iteration + 1}/{settings.max_agent_iterations}")
 
             try:
-                response = await asyncio.to_thread(
-                    self.client.messages.create,
-                    model="claude-sonnet-4-6",
-                    max_tokens=8096,
-                    system=self.get_system_prompt(),
-                    tools=self.get_tools(),
-                    messages=self.messages,
-                )
+                response = await self._call_claude_with_retry()
             except anthropic.APIError as e:
                 self.log("error", f"Claude API error: {e}")
                 raise

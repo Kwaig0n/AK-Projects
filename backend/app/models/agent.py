@@ -16,6 +16,7 @@ class AgentConfig(Base):
     notify_telegram: Mapped[bool] = mapped_column(Boolean, default=True)
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     criteria: Mapped[str] = mapped_column(Text, default="{}")  # JSON blob
+    enabled_skills: Mapped[str] = mapped_column(Text, default="[]")  # JSON list of skill IDs
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

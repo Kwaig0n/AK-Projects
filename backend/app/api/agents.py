@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.agent import AgentConfig
-from app.models.schemas import AgentCreate, AgentUpdate, AgentResponse, RunTriggerResponse
+from app.models.schemas import AgentCreate, AgentUpdate, AgentResponse, RunTriggerResponse, SkillResponse
 from app.services.agent_service import trigger_run, get_agents_with_stats
 from app.scheduler import scheduler
 
@@ -20,6 +20,12 @@ async def list_agents(db: AsyncSession = Depends(get_db)):
     return [AgentResponse(**row) for row in rows]
 
 
+@router.get("/skills", response_model=list[SkillResponse])
+async def list_skills():
+    from app.agents.skills_registry import SKILLS
+    return SKILLS
+
+
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
     agent = AgentConfig(
@@ -30,6 +36,7 @@ async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
         notify_telegram=data.notify_telegram,
         telegram_chat_id=data.telegram_chat_id,
         criteria=json.dumps(data.criteria),
+        enabled_skills=json.dumps(data.enabled_skills),
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
     )
@@ -41,10 +48,10 @@ async def create_agent(data: AgentCreate, db: AsyncSession = Depends(get_db)):
     if agent.cron_expression and agent.is_active:
         scheduler.register_job(agent.id, agent.name, agent.cron_expression)
 
-    return AgentResponse(
-        **{c.key: getattr(agent, c.key) for c in agent.__table__.columns},
-        criteria=json.loads(agent.criteria),
-    )
+    cols = {c.key: getattr(agent, c.key) for c in agent.__table__.columns}
+    cols["criteria"] = json.loads(agent.criteria)
+    cols["enabled_skills"] = json.loads(agent.enabled_skills) if agent.enabled_skills else []
+    return AgentResponse(**cols)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
@@ -76,6 +83,8 @@ async def update_agent(agent_id: int, data: AgentUpdate, db: AsyncSession = Depe
         agent.telegram_chat_id = data.telegram_chat_id or None
     if data.criteria is not None:
         agent.criteria = json.dumps(data.criteria)
+    if data.enabled_skills is not None:
+        agent.enabled_skills = json.dumps(data.enabled_skills)
     agent.updated_at = datetime.utcnow()
 
     await db.commit()
@@ -98,8 +107,8 @@ async def delete_agent(agent_id: int, db: AsyncSession = Depends(get_db)):
     agent = await db.get(AgentConfig, agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    agent.is_active = False
     scheduler.remove_job(agent_id)
+    await db.delete(agent)
     await db.commit()
 
 
