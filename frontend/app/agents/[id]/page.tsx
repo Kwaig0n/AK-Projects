@@ -3,11 +3,14 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Play, Pause, Pencil, Trash2, Bell } from "lucide-react";
+import { ArrowLeft, Play, Pause, Trash2, Bell, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/StatusBadge";
+import { SchedulePicker } from "@/components/SchedulePicker";
+import { toCron, fromCron, toHuman } from "@/lib/schedule";
+import type { ScheduleConfig } from "@/lib/schedule";
 import { api } from "@/lib/api";
 import type { Agent, Run, Finding } from "@/lib/types";
 
@@ -18,6 +21,9 @@ export default function AgentDetailPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [running, setRunning] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleConfig | null>(null);
+  const [savingSchedule, setSavingSchedule] = useState(false);
 
   async function load() {
     const [a, r, f] = await Promise.all([
@@ -25,7 +31,10 @@ export default function AgentDetailPage() {
       api.runs.list(Number(id), 10),
       api.findings.list({ agent_id: Number(id), limit: 5 }),
     ]);
-    setAgent(a); setRuns(r); setFindings(f);
+    setAgent(a);
+    setRuns(r);
+    setFindings(f);
+    setSchedule(fromCron(a.cron_expression));
   }
 
   useEffect(() => { load(); }, [id]);
@@ -49,7 +58,17 @@ export default function AgentDetailPage() {
     router.push("/agents");
   }
 
-  if (!agent) return <div className="p-6 text-gray-400">Loading...</div>;
+  async function handleSaveSchedule() {
+    if (!schedule) return;
+    setSavingSchedule(true);
+    try {
+      await api.agents.update(Number(id), { cron_expression: toCron(schedule) });
+      setEditingSchedule(false);
+      load();
+    } finally { setSavingSchedule(false); }
+  }
+
+  if (!agent || !schedule) return <div className="p-6 text-gray-400">Loading...</div>;
 
   return (
     <div className="p-6 space-y-4 max-w-3xl">
@@ -64,12 +83,13 @@ export default function AgentDetailPage() {
         </div>
         <div className="flex gap-2 shrink-0">
           <Button size="sm" onClick={handleRun} disabled={running}>
-            <Play className="h-4 w-4 mr-1" /> {running ? "Starting..." : "Run Now"}
+            <Play className="h-4 w-4 mr-1" />{running ? "Starting..." : "Run Now"}
           </Button>
           <Button size="sm" variant="outline" onClick={handleToggle}>
-            {agent.is_active ? <><Pause className="h-4 w-4 mr-1" /> Pause</> : <><Play className="h-4 w-4 mr-1" /> Resume</>}
+            {agent.is_active ? <><Pause className="h-4 w-4 mr-1" />Pause</> : <><Play className="h-4 w-4 mr-1" />Resume</>}
           </Button>
-          <Button size="sm" variant="outline" onClick={handleDelete} className="text-red-500 border-red-200 hover:bg-red-50">
+          <Button size="sm" variant="outline" onClick={handleDelete}
+            className="text-red-500 border-red-200 hover:bg-red-50">
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -79,16 +99,52 @@ export default function AgentDetailPage() {
         {[
           { label: "Status", value: agent.is_active ? "Active" : "Inactive", color: agent.is_active ? "text-green-600" : "text-gray-400" },
           { label: "Type", value: agent.agent_type === "real_estate" ? "Real Estate" : "Research", color: "text-blue-600" },
-          { label: "Schedule", value: agent.cron_expression || "Manual only", color: "text-gray-700" },
+          { label: "Findings (24h)", value: String(agent.findings_last_24h), color: "text-purple-600" },
         ].map(({ label, value, color }) => (
           <Card key={label}>
             <CardContent className="p-4">
               <div className="text-xs text-gray-400 mb-1">{label}</div>
-              <div className={`font-medium text-sm font-mono ${color}`}>{value}</div>
+              <div className={`font-medium text-sm ${color}`}>{value}</div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {/* Schedule card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Calendar className="h-4 w-4" /> Schedule
+            </CardTitle>
+            <Button size="sm" variant="ghost" onClick={() => setEditingSchedule(!editingSchedule)}>
+              {editingSchedule ? "Cancel" : "Edit"}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {editingSchedule ? (
+            <div className="space-y-3">
+              <SchedulePicker value={schedule} onChange={setSchedule} />
+              <Button size="sm" onClick={handleSaveSchedule} disabled={savingSchedule}>
+                {savingSchedule ? "Saving..." : "Save Schedule"}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium text-gray-700">{toHuman(schedule)}</span>
+              {agent.cron_expression && (
+                <span className="font-mono text-xs text-gray-400">({agent.cron_expression})</span>
+              )}
+              {agent.next_run_at && (
+                <span className="text-gray-400 text-xs">
+                  · next {formatDistanceToNow(new Date(agent.next_run_at), { addSuffix: true })}
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {agent.notify_telegram && (
         <div className="flex items-center gap-2 text-sm text-green-600">
@@ -116,7 +172,7 @@ export default function AgentDetailPage() {
           {runs.length === 0 ? (
             <div className="text-gray-400 text-sm">No runs yet.</div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-1">
               {runs.map((run) => (
                 <Link key={run.run_id} href={`/runs/${run.run_id}`}>
                   <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer">

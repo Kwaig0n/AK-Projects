@@ -1,10 +1,11 @@
 "use client";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { Play, Settings, Home, Search, Calendar, Bell } from "lucide-react";
+import { Play, Settings, Home, Search, Bell } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
+import { toHuman, fromCron } from "@/lib/schedule";
 import type { Agent } from "@/lib/types";
 import { api } from "@/lib/api";
 import { useRouter } from "next/navigation";
@@ -17,6 +18,7 @@ interface Props {
 export function AgentCard({ agent, onRunStarted }: Props) {
   const router = useRouter();
   const icon = agent.agent_type === "real_estate" ? <Home className="h-4 w-4" /> : <Search className="h-4 w-4" />;
+  const scheduleLabel = toHuman(fromCron(agent.cron_expression));
 
   async function handleRun() {
     try {
@@ -35,16 +37,12 @@ export function AgentCard({ agent, onRunStarted }: Props) {
           <div className="flex items-center gap-2">
             <span className="text-blue-600">{icon}</span>
             <CardTitle className="text-base">
-              <Link href={`/agents/${agent.id}`} className="hover:underline">
-                {agent.name}
-              </Link>
+              <Link href={`/agents/${agent.id}`} className="hover:underline">{agent.name}</Link>
             </CardTitle>
           </div>
           <StatusBadge status={agent.last_run_status} />
         </div>
-        {agent.description && (
-          <p className="text-sm text-gray-500 mt-1">{agent.description}</p>
-        )}
+        {agent.description && <p className="text-sm text-gray-500 mt-1">{agent.description}</p>}
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-2 gap-2 text-sm">
@@ -62,32 +60,32 @@ export function AgentCard({ agent, onRunStarted }: Props) {
           </div>
         </div>
 
-        {agent.cron_expression && (
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <Calendar className="h-3 w-3" />
-            <span>{agent.cron_expression}</span>
-            {agent.next_run_at && (
-              <span>· next {formatDistanceToNow(new Date(agent.next_run_at), { addSuffix: true })}</span>
-            )}
+        <div className="text-xs text-gray-500 flex items-center gap-1">
+          <span className="text-gray-400">Schedule:</span>
+          <span className={agent.cron_expression ? "text-gray-700 font-medium" : "text-gray-400"}>
+            {scheduleLabel}
+          </span>
+        </div>
+
+        {agent.next_run_at && (
+          <div className="text-xs text-gray-400">
+            Next: {formatDistanceToNow(new Date(agent.next_run_at), { addSuffix: true })}
           </div>
         )}
 
         {agent.notify_telegram && (
           <div className="flex items-center gap-1 text-xs text-green-600">
             <Bell className="h-3 w-3" />
-            <span>Telegram notifications on</span>
+            <span>Telegram on</span>
           </div>
         )}
 
         <div className="flex gap-2 pt-1">
           <Button size="sm" onClick={handleRun} className="flex-1">
-            <Play className="h-3 w-3 mr-1" />
-            Run Now
+            <Play className="h-3 w-3 mr-1" />Run Now
           </Button>
           <Link href={`/agents/${agent.id}`}>
-            <Button size="sm" variant="outline">
-              <Settings className="h-3 w-3" />
-            </Button>
+            <Button size="sm" variant="outline"><Settings className="h-3 w-3" /></Button>
           </Link>
         </div>
       </CardContent>

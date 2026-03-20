@@ -1,13 +1,16 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SchedulePicker } from "@/components/SchedulePicker";
+import { toCron, fromCron, DEFAULT_SCHEDULE } from "@/lib/schedule";
+import type { ScheduleConfig } from "@/lib/schedule";
 import { api } from "@/lib/api";
 import type { AgentType } from "@/lib/types";
 
@@ -41,22 +44,17 @@ export default function NewAgentPage() {
     name: "",
     description: "",
     agent_type: "real_estate" as AgentType,
-    cron_expression: "",
     notify_telegram: true,
   });
-  const [criteriaStr, setCriteriaStr] = useState(
-    JSON.stringify(DEFAULT_RE_CRITERIA, null, 2)
-  );
+  const [schedule, setSchedule] = useState<ScheduleConfig>({ ...DEFAULT_SCHEDULE, type: "manual" });
+  const [criteriaStr, setCriteriaStr] = useState(JSON.stringify(DEFAULT_RE_CRITERIA, null, 2));
   const [criteriaError, setCriteriaError] = useState("");
 
   function handleTypeChange(t: AgentType) {
     setForm((f) => ({ ...f, agent_type: t }));
-    setCriteriaStr(
-      JSON.stringify(
-        t === "real_estate" ? DEFAULT_RE_CRITERIA : DEFAULT_RESEARCH_CRITERIA,
-        null, 2
-      )
-    );
+    setCriteriaStr(JSON.stringify(
+      t === "real_estate" ? DEFAULT_RE_CRITERIA : DEFAULT_RESEARCH_CRITERIA, null, 2
+    ));
     setCriteriaError("");
   }
 
@@ -67,17 +65,16 @@ export default function NewAgentPage() {
       criteria = JSON.parse(criteriaStr);
       setCriteriaError("");
     } catch {
-      setCriteriaError("Invalid JSON — please fix the criteria before saving.");
+      setCriteriaError("Invalid JSON — please fix before saving.");
       return;
     }
-
     setSaving(true);
     try {
       const agent = await api.agents.create({
         name: form.name,
         description: form.description,
         agent_type: form.agent_type,
-        cron_expression: form.cron_expression || null,
+        cron_expression: toCron(schedule),
         notify_telegram: form.notify_telegram,
         criteria,
       });
@@ -116,8 +113,7 @@ export default function NewAgentPage() {
               <Label>Agent Type *</Label>
               <div className="flex gap-2 mt-1">
                 {(["real_estate", "research"] as AgentType[]).map((t) => (
-                  <button key={t} type="button"
-                    onClick={() => handleTypeChange(t)}
+                  <button key={t} type="button" onClick={() => handleTypeChange(t)}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       form.agent_type === t
                         ? "bg-blue-600 text-white border-blue-600"
@@ -132,16 +128,10 @@ export default function NewAgentPage() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-base">Scheduling</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <Label htmlFor="cron">Cron Expression (optional)</Label>
-              <Input id="cron" value={form.cron_expression}
-                onChange={(e) => setForm((f) => ({ ...f, cron_expression: e.target.value }))}
-                placeholder="e.g. 0 9 * * * (daily at 9am)" />
-              <p className="text-xs text-gray-400 mt-1">Leave blank for manual runs only</p>
-            </div>
-            <div className="flex items-center gap-2">
+          <CardHeader><CardTitle className="text-base">Schedule</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <SchedulePicker value={schedule} onChange={setSchedule} />
+            <div className="flex items-center gap-2 pt-1">
               <input type="checkbox" id="tg" checked={form.notify_telegram}
                 onChange={(e) => setForm((f) => ({ ...f, notify_telegram: e.target.checked }))} />
               <Label htmlFor="tg">Send Telegram notifications when findings are ready</Label>
@@ -150,26 +140,17 @@ export default function NewAgentPage() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Search Criteria (JSON)</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle className="text-base">Search Criteria (JSON)</CardTitle></CardHeader>
           <CardContent>
-            <Textarea
-              value={criteriaStr}
-              onChange={(e) => setCriteriaStr(e.target.value)}
-              className="font-mono text-xs h-64"
-            />
-            {criteriaError && (
-              <p className="text-red-500 text-xs mt-1">{criteriaError}</p>
-            )}
+            <Textarea value={criteriaStr} onChange={(e) => setCriteriaStr(e.target.value)}
+              className="font-mono text-xs h-64" />
+            {criteriaError && <p className="text-red-500 text-xs mt-1">{criteriaError}</p>}
           </CardContent>
         </Card>
 
         <div className="flex gap-2 justify-end">
           <Link href="/agents"><Button variant="outline" type="button">Cancel</Button></Link>
-          <Button type="submit" disabled={saving}>
-            {saving ? "Creating..." : "Create Agent"}
-          </Button>
+          <Button type="submit" disabled={saving}>{saving ? "Creating..." : "Create Agent"}</Button>
         </div>
       </form>
     </div>
