@@ -79,6 +79,19 @@ def _format_run_complete(agent: "AgentConfig", run: "AgentRun", findings: list["
             if parts:
                 lines.append("   " + " | ".join(parts))
 
+            # Yield info
+            if meta.get("rental_yield_pct"):
+                yield_icon = {"strong": "🟢", "above_average": "🟢", "average": "🔵",
+                              "below_average": "🟡", "weak": "🔴"}.get(meta.get("yield_rating", ""), "📊")
+                yield_line = f"   {yield_icon} Yield: {meta['rental_yield_pct']}%"
+                if meta.get("suburb_avg_yield_pct"):
+                    yield_line += f" (suburb avg: {meta['suburb_avg_yield_pct']}%)"
+                if meta.get("yield_index"):
+                    yield_line += f" · Index: {meta['yield_index']}x"
+                if meta.get("estimated_weekly_rent"):
+                    yield_line += f" · ~${meta['estimated_weekly_rent']}/wk rent"
+                lines.append(yield_line)
+
         lines.append(f"   Score: {finding.relevance_score:.2f} ★")
         if finding.url:
             lines.append(f"   {finding.url}")
