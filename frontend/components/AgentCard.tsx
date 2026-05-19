@@ -68,7 +68,7 @@ export function AgentCard({ agent, onRunStarted, onStopped }: Props) {
               <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{agent.description}</p>
             )}
             <p className="text-xs text-gray-400 mt-0.5 capitalize">
-              {agent.agent_type === "real_estate" ? "Real Estate Agent" : "Research Agent"}
+              {agent.agent_type === "real_estate" ? "Real Estate Agent" : agent.agent_type === "job_listing" ? "Job Listing Scanner" : "Research Agent"}
             </p>
           </div>
         </div>

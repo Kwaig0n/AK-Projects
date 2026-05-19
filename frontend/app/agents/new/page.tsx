@@ -38,6 +38,20 @@ const DEFAULT_RESEARCH_CRITERIA = {
   domains_exclude: [],
 };
 
+const DEFAULT_JOB_CRITERIA = {
+  job_titles: ["Software Engineer", "Backend Developer"],
+  locations: ["Sydney", "Melbourne", "Remote"],
+  employment_type: "full_time",
+  sources: ["seek.com.au", "linkedin.com", "indeed.com.au"],
+  keywords_include: [],
+  keywords_exclude: [],
+  salary_min: 100000,
+  salary_max: 160000,
+  min_match_score: 0.7,
+  max_results: 10,
+  cv_summary: "Replace this with a summary of your skills and experience. Include: years of experience, core technologies, industry background, and any key achievements.",
+};
+
 export default function NewAgentPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -54,9 +68,11 @@ export default function NewAgentPage() {
 
   function handleTypeChange(t: AgentType) {
     setForm((f) => ({ ...f, agent_type: t }));
-    setCriteriaStr(JSON.stringify(
-      t === "real_estate" ? DEFAULT_RE_CRITERIA : DEFAULT_RESEARCH_CRITERIA, null, 2
-    ));
+    const defaults =
+      t === "real_estate" ? DEFAULT_RE_CRITERIA :
+      t === "job_listing" ? DEFAULT_JOB_CRITERIA :
+      DEFAULT_RESEARCH_CRITERIA;
+    setCriteriaStr(JSON.stringify(defaults, null, 2));
     setCriteriaError("");
     setEnabledSkills([]);
   }
@@ -115,15 +131,15 @@ export default function NewAgentPage() {
             </div>
             <div>
               <Label>Agent Type *</Label>
-              <div className="flex gap-2 mt-1">
-                {(["real_estate", "research"] as AgentType[]).map((t) => (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {(["real_estate", "research", "job_listing"] as AgentType[]).map((t) => (
                   <button key={t} type="button" onClick={() => handleTypeChange(t)}
                     className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
                       form.agent_type === t
                         ? "bg-blue-600 text-white border-blue-600"
                         : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
                     }`}>
-                    {t === "real_estate" ? "🏠 Real Estate" : "🔍 Research"}
+                    {t === "real_estate" ? "🏠 Real Estate" : t === "job_listing" ? "💼 Job Listings" : "🔍 Research"}
                   </button>
                 ))}
               </div>

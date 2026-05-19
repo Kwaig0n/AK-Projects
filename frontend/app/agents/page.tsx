@@ -83,7 +83,7 @@ export default function AgentsPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1 text-gray-600">
                       {agent.agent_type === "real_estate" ? <Home className="h-3 w-3" /> : <Search className="h-3 w-3" />}
-                      {agent.agent_type === "real_estate" ? "Real Estate" : "Research"}
+                      {agent.agent_type === "real_estate" ? "Real Estate" : agent.agent_type === "job_listing" ? "Job Listings" : "Research"}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-500">

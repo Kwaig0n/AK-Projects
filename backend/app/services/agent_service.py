@@ -189,11 +189,14 @@ def _create_agent(agent_type: str, agent_id: int, run_id: str, criteria: dict, l
     """Instantiate the correct agent class."""
     from app.agents.real_estate_agent import RealEstateAgent
     from app.agents.research_agent import ResearchAgent
+    from app.agents.job_listing_agent import JobListingAgent
 
     if agent_type == "real_estate":
         return RealEstateAgent(agent_id, run_id, criteria, log_fn, enabled_skills)
     elif agent_type == "research":
         return ResearchAgent(agent_id, run_id, criteria, log_fn, enabled_skills)
+    elif agent_type == "job_listing":
+        return JobListingAgent(agent_id, run_id, criteria, log_fn, enabled_skills)
     else:
         raise ValueError(f"Unknown agent type: {agent_type}")
 

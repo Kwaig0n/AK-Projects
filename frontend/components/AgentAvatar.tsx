@@ -8,13 +8,19 @@ interface Props {
 
 export function AgentAvatar({ agentType, isRunning = false, size = 48 }: Props) {
   const isRealEstate = agentType === "real_estate";
+  const isJobListing = agentType === "job_listing";
+
+  const pulseColor = isRealEstate
+    ? "rgba(37,99,235,0.3)"
+    : isJobListing
+    ? "rgba(5,150,105,0.3)"
+    : "rgba(124,58,237,0.3)";
 
   return (
     <div
       className="relative flex-shrink-0"
       style={{ width: size, height: size }}
     >
-      {/* Gradient circle background */}
       <svg
         width={size}
         height={size}
@@ -29,6 +35,11 @@ export function AgentAvatar({ agentType, isRunning = false, size = 48 }: Props) 
                 <stop offset="0%" stopColor="#6ee7f7" />
                 <stop offset="100%" stopColor="#2563eb" />
               </>
+            ) : isJobListing ? (
+              <>
+                <stop offset="0%" stopColor="#6ee7b7" />
+                <stop offset="100%" stopColor="#059669" />
+              </>
             ) : (
               <>
                 <stop offset="0%" stopColor="#c4b5fd" />
@@ -38,47 +49,41 @@ export function AgentAvatar({ agentType, isRunning = false, size = 48 }: Props) 
           </radialGradient>
         </defs>
 
-        {/* Circle backdrop */}
         <circle cx="24" cy="24" r="24" fill={`url(#grad-${agentType})`} />
-
-        {/* Subtle inner highlight */}
         <ellipse cx="18" cy="14" rx="9" ry="5" fill="white" fillOpacity="0.15" />
 
         {isRealEstate ? (
-          /* House + person silhouette */
           <g fill="white">
-            {/* House body */}
             <rect x="13" y="26" width="22" height="13" rx="1" fillOpacity="0.95" />
-            {/* Roof */}
             <polygon points="24,13 10,27 38,27" fillOpacity="0.95" />
-            {/* Door */}
-            <rect x="21" y="31" width="6" height="8" rx="1" fill={isRealEstate ? "#2563eb" : "#7c3aed"} fillOpacity="0.6" />
-            {/* Window */}
-            <rect x="14" y="28" width="5" height="4" rx="0.5" fill={isRealEstate ? "#2563eb" : "#7c3aed"} fillOpacity="0.5" />
-            <rect x="29" y="28" width="5" height="4" rx="0.5" fill={isRealEstate ? "#2563eb" : "#7c3aed"} fillOpacity="0.5" />
+            <rect x="21" y="31" width="6" height="8" rx="1" fill="#2563eb" fillOpacity="0.6" />
+            <rect x="14" y="28" width="5" height="4" rx="0.5" fill="#2563eb" fillOpacity="0.5" />
+            <rect x="29" y="28" width="5" height="4" rx="0.5" fill="#2563eb" fillOpacity="0.5" />
+          </g>
+        ) : isJobListing ? (
+          /* Briefcase silhouette */
+          <g fill="white" fillOpacity="0.95">
+            {/* Briefcase body */}
+            <rect x="10" y="22" width="28" height="18" rx="2" />
+            {/* Briefcase handle */}
+            <path d="M19 22 L19 18 Q19 16 21 16 L27 16 Q29 16 29 18 L29 22" fill="none" stroke="white" strokeWidth="2.5" strokeOpacity="0.9" />
+            {/* Centre clasp line */}
+            <rect x="10" y="29" width="28" height="2" fill="#059669" fillOpacity="0.5" />
+            <rect x="22" y="27" width="4" height="6" rx="1" fill="#059669" fillOpacity="0.6" />
           </g>
         ) : (
-          /* Researcher / bot silhouette */
           <g fill="white" fillOpacity="0.95">
-            {/* Head */}
             <circle cx="24" cy="17" r="6" />
-            {/* Body */}
             <path d="M14 38 C14 30 34 30 34 38" />
-            {/* Magnifying glass overlay */}
             <circle cx="30" cy="30" r="5" fill="none" stroke="white" strokeWidth="2.5" strokeOpacity="0.9" />
             <line x1="34" y1="34" x2="37" y2="37" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeOpacity="0.9" />
           </g>
         )}
       </svg>
 
-      {/* Running pulse ring */}
       {isRunning && (
         <span className="absolute inset-0 rounded-full animate-ping"
-          style={{
-            background: isRealEstate
-              ? "rgba(37,99,235,0.3)"
-              : "rgba(124,58,237,0.3)",
-          }}
+          style={{ background: pulseColor }}
         />
       )}
     </div>

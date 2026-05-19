@@ -1,6 +1,6 @@
-export type AgentType = "real_estate" | "research";
+export type AgentType = "real_estate" | "research" | "job_listing";
 export type RunStatus = "pending" | "running" | "completed" | "failed" | "stopped";
-export type FindingType = "listing" | "price_change" | "research_result" | "alert";
+export type FindingType = "listing" | "price_change" | "research_result" | "alert" | "job_listing";
 export type LogLevel = "info" | "tool_call" | "tool_result" | "warning" | "error" | "done";
 
 export interface Skill {
@@ -112,4 +112,18 @@ export interface ResearchCriteria {
   output_format: string;
   domains_include: string[];
   domains_exclude: string[];
+}
+
+export interface JobListingCriteria {
+  job_titles: string[];
+  locations: string[];
+  employment_type: "full_time" | "part_time" | "contract" | "casual" | "any";
+  sources: string[];
+  keywords_include: string[];
+  keywords_exclude: string[];
+  salary_min?: number;
+  salary_max?: number;
+  min_match_score: number;
+  max_results: number;
+  cv_summary: string;
 }

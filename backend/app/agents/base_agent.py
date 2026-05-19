@@ -40,7 +40,7 @@ REPORT_FINDING_TOOL_DEF = {
             },
             "finding_type": {
                 "type": "string",
-                "enum": ["listing", "price_change", "research_result", "alert"],
+                "enum": ["listing", "price_change", "research_result", "alert", "job_listing"],
             },
             "relevance_score": {
                 "type": "number",

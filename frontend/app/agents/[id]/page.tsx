@@ -171,7 +171,7 @@ export default function AgentDetailPage() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: "Status", value: agent.is_active ? "Active" : "Inactive", color: agent.is_active ? "text-green-600" : "text-gray-400" },
-          { label: "Type", value: agent.agent_type === "real_estate" ? "Real Estate" : "Research", color: "text-blue-600" },
+          { label: "Type", value: agent.agent_type === "real_estate" ? "Real Estate" : agent.agent_type === "job_listing" ? "Job Listings" : "Research", color: "text-blue-600" },
           { label: "Findings (24h)", value: String(agent.findings_last_24h), color: "text-purple-600" },
         ].map(({ label, value, color }) => (
           <Card key={label}>
